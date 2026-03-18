@@ -1,1 +1,215 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>출석 체크 시스템</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .status-btn.active-출석 { background-color: #10b981; color: white; border-color: #10b981; }
+        .status-btn.active-결석 { background-color: #ef4444; color: white; border-color: #ef4444; }
+        .status-btn.active-지각 { background-color: #f59e0b; color: white; border-color: #f59e0b; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
 
+    <div class="max-w-4xl mx-auto">
+        <!-- 헤더 -->
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-slate-800">학생 출석 관리 시스템</h1>
+            <p class="text-slate-500 mt-2">학생의 출석 상태를 실시간으로 기록하고 확인하세요.</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- 입력 폼 섹션 -->
+            <div class="lg:col-span-1">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h2 class="text-lg font-semibold mb-4 text-slate-700">출석 기록하기</h2>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1">학생 이름</label>
+                            <input type="text" id="studentName" placeholder="이름을 입력하세요" 
+                                class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none transition">
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-2">상태 선택</label>
+                            <div class="grid grid-cols-3 gap-2" id="statusGroup">
+                                <button onclick="selectStatus('출석')" class="status-btn border border-slate-300 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition" data-status="출석">출석</button>
+                                <button onclick="selectStatus('지각')" class="status-btn border border-slate-300 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition" data-status="지각">지각</button>
+                                <button onclick="selectStatus('결석')" class="status-btn border border-slate-300 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition" data-status="결석">결석</button>
+                            </div>
+                        </div>
+
+                        <button id="submitBtn" onclick="submitAttendance()" 
+                            class="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition shadow-md shadow-indigo-100">
+                            기록 저장하기
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 현황 리스트 섹션 -->
+            <div class="lg:col-span-2">
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="p-6 border-b border-slate-100 flex justify-between items-center">
+                        <h2 class="text-lg font-semibold text-slate-700">최근 출석 기록</h2>
+                        <span id="recordCount" class="text-xs font-bold bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full">0건</span>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead class="bg-slate-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-sm font-semibold text-slate-600 uppercase">시간</th>
+                                    <th class="px-6 py-3 text-sm font-semibold text-slate-600 uppercase">이름</th>
+                                    <th class="px-6 py-3 text-sm font-semibold text-slate-600 uppercase">상태</th>
+                                    <th class="px-6 py-3 text-sm font-semibold text-slate-600 uppercase">관리</th>
+                                </tr>
+                            </thead>
+                            <tbody id="attendanceList" class="divide-y divide-slate-100">
+                                <!-- 데이터가 여기에 동적으로 삽입됩니다 -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="emptyState" class="p-10 text-center text-slate-400 hidden">
+                        기록된 데이터가 없습니다.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK (v10) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, deleteDoc, doc } 
+        from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        // --- [Firebase 설정] ---
+        // Firebase 콘솔 -> 프로젝트 설정 -> 하단의 '내 앱'에서 복사한 설정값을 여기에 붙여넣으세요.
+const firebaseConfig = {
+  apiKey: "AIzaSyCoXwyfvAaoH0tRq-dhsjvA2Dz32kiv0ok",
+  authDomain: "gen-lang-client-0505607228.firebaseapp.com",
+  projectId: "gen-lang-client-0505607228",
+  storageBucket: "gen-lang-client-0505607228.firebasestorage.app",
+  messagingSenderId: "46254038377",
+  appId: "1:46254038377:web:0833f060a1a8759e5b71f8",
+  measurementId: "G-BKSEJ4H036"
+};
+
+
+        // 앱 초기화 및 Firestore 인스턴스 가져오기
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const attendanceCol = collection(db, "attendance");
+
+        let selectedStatus = "";
+
+        // 상태 선택 함수 (UI 업데이트)
+        window.selectStatus = (status) => {
+            selectedStatus = status;
+            document.querySelectorAll('.status-btn').forEach(btn => {
+                btn.classList.remove('active-출석', 'active-결석', 'active-지각');
+                if (btn.getAttribute('data-status') === status) {
+                    btn.classList.add(`active-${status}`);
+                }
+            });
+        };
+
+        // 출석 기록 제출 함수
+        window.submitAttendance = async () => {
+            const nameInput = document.getElementById('studentName');
+            const name = nameInput.value.trim();
+
+            if (!name) {
+                alert("학생 이름을 입력해 주세요.");
+                return;
+            }
+            if (!selectedStatus) {
+                alert("출석 상태를 선택해 주세요.");
+                return;
+            }
+
+            try {
+                await addDoc(attendanceCol, {
+                    name: name,
+                    status: selectedStatus,
+                    timestamp: serverTimestamp()
+                });
+                
+                // 초기화
+                nameInput.value = "";
+                selectedStatus = "";
+                document.querySelectorAll('.status-btn').forEach(btn => 
+                    btn.classList.remove('active-출석', 'active-결석', 'active-지각')
+                );
+            } catch (e) {
+                console.error("Error adding document: ", e);
+                alert("저장 중 오류가 발생했습니다. Firebase 설정을 확인하세요.");
+            }
+        };
+
+        // 기록 삭제 함수
+        window.deleteRecord = async (id) => {
+            if (confirm("기록을 삭제하시겠습니까?")) {
+                await deleteDoc(doc(db, "attendance", id));
+            }
+        };
+
+        // 실시간 데이터 감시 및 화면 업데이트
+        const q = query(attendanceCol, orderBy("timestamp", "desc"));
+        onSnapshot(q, (snapshot) => {
+            const listElement = document.getElementById('attendanceList');
+            const emptyState = document.getElementById('emptyState');
+            const countElement = document.getElementById('recordCount');
+            
+            listElement.innerHTML = "";
+            countElement.innerText = `${snapshot.size}건`;
+
+            if (snapshot.empty) {
+                emptyState.classList.remove('hidden');
+            } else {
+                emptyState.classList.add('hidden');
+            }
+
+            snapshot.forEach((doc) => {
+                const data = doc.data();
+                const date = data.timestamp ? new Date(data.timestamp.seconds * 1000).toLocaleString('ko-KR', {
+                    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                }) : "처리 중...";
+
+                const statusColor = {
+                    '출석': 'text-green-600 bg-green-50',
+                    '결석': 'text-red-600 bg-red-50',
+                    '지각': 'text-amber-600 bg-amber-50'
+                }[data.status] || 'bg-slate-100';
+
+                const row = `
+                    <tr class="hover:bg-slate-50 transition">
+                        <td class="px-6 py-4 text-sm text-slate-500">${date}</td>
+                        <td class="px-6 py-4 text-sm font-semibold text-slate-700">${data.name}</td>
+                        <td class="px-6 py-4 text-sm">
+                            <span class="px-3 py-1 rounded-full font-medium ${statusColor}">
+                                ${data.status}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 text-sm">
+                            <button onclick="deleteRecord('${doc.id}')" class="text-slate-300 hover:text-red-500 transition">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+                listElement.innerHTML += row;
+            });
+        });
+    </script>
+</body>
+</html>
